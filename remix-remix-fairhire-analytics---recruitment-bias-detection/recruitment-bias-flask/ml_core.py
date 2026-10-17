@@ -80,9 +80,12 @@ def build_model(name: str):
     if name == "Decision Tree":
         return DecisionTreeClassifier(max_depth=12, min_samples_leaf=5, random_state=RANDOM_STATE)
     if name == "Random Forest":
-        return RandomForestClassifier(
-            n_estimators=100, min_samples_leaf=2, n_jobs=-1, random_state=RANDOM_STATE
-        )
+      return RandomForestClassifier(
+    n_estimators=100,
+    min_samples_leaf=2,
+    n_jobs=1,
+    random_state=RANDOM_STATE
+)
     raise ValueError(f"Unknown model name: {name}")
 
 
