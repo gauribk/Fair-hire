@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ APP_NAME }} - AI Recruitment Bias Analysis{% endblock %}</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-brand d-flex align-items-center gap-3">
+        <div class="sidebar-brand-badge">
+          <i class="bi bi-shield-check fs-5"></i>
+        </div>
+        <div>
+          <h4>FairHire</h4>
+          <p>Fairness & Bias Audit</p>
+        </div>
+      </div>
+
+      <ul class="sidebar-nav">
+        <li class="nav-section-title">Audit Modules</li>
+        <li class="nav-item">
+          <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">
+            <i class="bi bi-grid-1x2-fill"></i>
+            <span>Overview Dashboard</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="{{ url_for('dataset_overview') }}" class="nav-link {% if request.endpoint == 'dataset_overview' %}active{% endif %}">
+            <i class="bi bi-database-fill"></i>
+            <span>Dataset Analysis</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="{{ url_for('models_comparison') }}" class="nav-link {% if request.endpoint == 'models_comparison' %}active{% endif %}">
+            <i class="bi bi-cpu-fill"></i>
+            <span>ML Models & Metrics</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="{{ url_for('fairness_analysis') }}" class="nav-link {% if request.endpoint == 'fairness_analysis' %}active{% endif %}">
+            <i class="bi bi-pie-chart-fill"></i>
+            <span>Fairness & Bias Audit</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="{{ url_for('feature_importance') }}" class="nav-link {% if request.endpoint == 'feature_importance' %}active{% endif %}">
+            <i class="bi bi-bar-chart-steps"></i>
+            <span>Feature Importance</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a href="{{ url_for('candidate_test') }}" class="nav-link {% if request.endpoint == 'candidate_test' %}active{% endif %}">
+            <i class="bi bi-person-bounding-box"></i>
+            <span>Test a Candidate</span>
+          </a>
+        </li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="d-flex align-items-center gap-2">
+            <span class="pulse-dot"></span>
+            <span class="text-white fw-semibold" style="font-size: 0.76rem;">Models Ready</span>
+          </span>
+          <span class="badge bg-dark border border-secondary text-light px-2 py-1" style="font-size: 0.68rem;">Python 3.11</span>
+        </div>
+        <small class="text-muted d-block" style="font-size: 0.7rem; line-height: 1.35;">
+          Research audit prototype &bull; Prohibited for real employment decisions.
+        </small>
+      </div>
+    </aside>
+
+    <!-- Main Viewport -->
+    <main class="main-content">
+      <!-- Flash Alert messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show shadow-sm" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <!-- Bootstrap 5 Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Custom JS -->
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

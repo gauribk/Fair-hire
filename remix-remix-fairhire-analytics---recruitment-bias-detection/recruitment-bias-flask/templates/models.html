@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+
+{% block title %}Model Evaluation - FairHire Analytics{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+  <div>
+    <h2 class="fw-bold text-navy mb-1"><i class="bi bi-cpu me-2"></i> Machine Learning Model Comparison</h2>
+    <p class="text-muted mb-0">
+      Stratified train/test evaluation (80/20 split: {{ "{:,}".format(train_size) }} train / {{ "{:,}".format(test_size) }} test rows, <code>random_state=42</code>).
+    </p>
+  </div>
+  <div class="btn-group" role="group">
+    <a href="{{ url_for('models_comparison', setup='standard') }}" 
+       class="btn {% if setup == 'standard' %}btn-navy{% else %}btn-outline-secondary{% endif %}">
+      <i class="bi bi-shield-check me-1"></i> Standard Setup (Safe Features)
+    </a>
+    <a href="{{ url_for('models_comparison', setup='audit') }}" 
+       class="btn {% if setup == 'audit' %}btn-danger text-white{% else %}btn-outline-danger{% endif %}">
+      <i class="bi bi-shield-slash me-1"></i> Audit Setup (Sensitive Features)
+    </a>
+  </div>
+</div>
+
+<!-- Setup Explanation Banner -->
+{% if setup == 'standard' %}
+<div class="callout-box callout-info mb-4">
+  <div class="d-flex justify-content-between align-items-start">
+    <div>
+      <h6 class="fw-bold mb-1"><i class="bi bi-check-circle-fill me-1"></i> Active Configuration: Standard Setup (Legitimate Hiring Features)</h6>
+      <p class="mb-0">
+        Inputs are strictly restricted to <strong>Resume Text</strong> (TF-IDF 1-2 n-grams), <strong>Job Description</strong> (TF-IDF), and <strong>Job Roles</strong> (One-Hot Encoded).
+        Protected attributes (Gender, Race, Ethnicity, Age) and Applicant Names are <strong>completely excluded</strong>.
+      </p>
+    </div>
+    <span class="badge badge-custom badge-standard fs-6">Non-Discriminatory</span>
+  </div>
+</div>
+{% else %}
+<div class="callout-box callout-alert mb-4">
+  <div class="d-flex justify-content-between align-items-start">
+    <div>
+      <h6 class="fw-bold mb-1"><i class="bi bi-exclamation-octagon-fill me-1"></i> Active Configuration: Experimental Bias Audit Setup</h6>
+      <p class="mb-0">
+        Protected demographic attributes (<strong>Gender, Race, Ethnicity, Age</strong>) are added as inputs purely to measure how much historical bias a model can memorize. 
+        <strong>Never deploy an audit setup for real candidate screening.</strong>
+      </p>
+    </div>
+    <span class="badge badge-custom badge-audit fs-6">Audit Model Only</span>
+  </div>
+</div>
+{% endif %}
+
+<!-- Model Score Cards -->
+<div class="row g-3 mb-4">
+  {% for m_name in MODEL_NAMES %}
+    {% set info = current_setup[m_name] %}
+    {% set metrics = info.metrics %}
+    <div class="col-md-4">
+      <div class="stat-card {% if loop.index == 1 %}stat-card-accent-navy{% elif loop.index == 2 %}stat-card-accent-amber{% else %}stat-card-accent-teal{% endif %}">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <div class="stat-label">{{ m_name }}</div>
+          <span class="badge badge-soft-slate">Test Set (20%)</span>
+        </div>
+        <div class="stat-value">{{ "%.1f"|format(metrics.Accuracy * 100) }}%</div>
+        <div class="stat-note">
+          Precision: <strong>{{ "%.3f"|format(metrics.Precision) }}</strong> &bull; 
+          Recall: <strong>{{ "%.3f"|format(metrics.Recall) }}</strong> &bull; 
+          F1: <strong>{{ "%.3f"|format(metrics['F1-score']) }}</strong>
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<!-- Comparison Chart & Table -->
+<div class="row g-4 mb-4">
+  <div class="col-lg-6">
+    <div class="content-card h-100">
+      <div class="content-card-header">
+        <h5><i class="bi bi-bar-chart me-2"></i> Metric Comparison by Algorithm</h5>
+      </div>
+      <div class="content-card-body">
+        <div class="chart-container">
+          <canvas id="metricsChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="content-card h-100">
+      <div class="content-card-header">
+        <h5><i class="bi bi-table me-2"></i> Evaluation Summary Table</h5>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-custom mb-0">
+          <thead>
+            <tr>
+              <th>Model</th>
+              <th>Accuracy</th>
+              <th>Precision</th>
+              <th>Recall</th>
+              <th>F1-Score</th>
+              <th>Predicted Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m_name in MODEL_NAMES %}
+              {% set m = current_setup[m_name] %}
+              <tr>
+                <td class="fw-bold">{{ m_name }}</td>
+                <td><span class="badge bg-secondary">{{ "%.1f"|format(m.metrics.Accuracy * 100) }}%</span></td>
+                <td>{{ "%.3f"|format(m.metrics.Precision) }}</td>
+                <td>{{ "%.3f"|format(m.metrics.Recall) }}</td>
+                <td class="fw-semibold text-primary">{{ "%.3f"|format(m.metrics['F1-score']) }}</td>
+                <td>{{ "%.1f"|format(m.pred.mean() * 100) }}%</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="content-card-body border-top py-3">
+        <small class="text-muted">
+          * Predicted Rate is the percentage of test applicants the model labelled <code>1 (Best Match)</code>. A rate skewed far from 49.6% indicates majority-class leaning.
+        </small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Confusion Matrices -->
+<div class="content-card mb-4">
+  <div class="content-card-header">
+    <h5><i class="bi bi-grid-3x3 me-2"></i> Confusion Matrices (Held-Out Test Set: {{ test_size }} applicants)</h5>
+  </div>
+  <div class="content-card-body">
+    <div class="row g-4 text-center">
+      {% for m_name in MODEL_NAMES %}
+        {% set cm = current_setup[m_name].metrics.confusion_matrix %}
+        <div class="col-md-4">
+          <div class="p-3 bg-light rounded border">
+            <h6 class="fw-bold text-navy mb-3">{{ m_name }}</h6>
+            <div class="table-responsive">
+              <table class="table table-bordered table-sm mb-2" style="font-size: 0.82rem;">
+                <thead class="table-secondary">
+                  <tr>
+                    <th></th>
+                    <th>Pred: 0</th>
+                    <th>Pred: 1</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th class="table-light">Actual: 0</th>
+                    <td class="bg-white"><strong class="text-success">{{ cm[0][0] }}</strong><br><small class="text-muted">TN</small></td>
+                    <td class="bg-white"><strong class="text-danger">{{ cm[0][1] }}</strong><br><small class="text-muted">FP</small></td>
+                  </tr>
+                  <tr>
+                    <th class="table-light">Actual: 1</th>
+                    <td class="bg-white"><strong class="text-danger">{{ cm[1][0] }}</strong><br><small class="text-muted">FN</small></td>
+                    <td class="bg-white"><strong class="text-success">{{ cm[1][1] }}</strong><br><small class="text-muted">TP</small></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="small text-muted">
+              Total correct: <strong>{{ cm[0][0] + cm[1][1] }}</strong> / {{ test_size }}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- Scientific Interpretation & Methodology Honesty -->
+<div class="callout-box callout-warn">
+  <h6 class="fw-bold text-dark mb-1"><i class="bi bi-lightbulb-fill me-1"></i> Scientific Interpretation & Methodology Honesty</h6>
+  {% if setup == 'standard' %}
+    <p class="mb-0">
+      <strong>Standard models fail to learn real predictive signal:</strong> All three algorithms score ~50% accuracy on balanced classes, demonstrating that resume skills and job descriptions do not predict the <em>Best Match</em> label. 
+      Beware of naive F1 interpretations: Decision Tree shows artificially high recall because it leans toward labelling nearly everyone as positive. 
+      Reporting weak performance candidly is an essential principle of machine learning ethics.
+    </p>
+  {% else %}
+    <p class="mb-0">
+      <strong>High accuracy in Audit setup is an alert, not an achievement:</strong> Model accuracy surges to ~88% solely because the models utilize <em>Gender</em> combined with <em>Job Role</em>. 
+      The models have effectively learned to mimic historical bias patterns embedded in the training labels. Deploying such a model in production would institutionalize discrimination.
+    </p>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const ctx = document.getElementById('metricsChart').getContext('2d');
+  const models = {{ MODEL_NAMES|tojson }};
+  const accuracy = [
+    {% for m in MODEL_NAMES %}{{ current_setup[m].metrics.Accuracy|round(3) }},{% endfor %}
+  ];
+  const precision = [
+    {% for m in MODEL_NAMES %}{{ current_setup[m].metrics.Precision|round(3) }},{% endfor %}
+  ];
+  const recall = [
+    {% for m in MODEL_NAMES %}{{ current_setup[m].metrics.Recall|round(3) }},{% endfor %}
+  ];
+  const f1 = [
+    {% for m in MODEL_NAMES %}{{ current_setup[m].metrics['F1-score']|round(3) }},{% endfor %}
+  ];
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: models,
+      datasets: [
+        { label: 'Accuracy', data: accuracy, backgroundColor: '#1F3A5F', borderRadius: 4 },
+        { label: 'Precision', data: precision, backgroundColor: '#2A9D8F', borderRadius: 4 },
+        { label: 'Recall', data: recall, backgroundColor: '#E9A23B', borderRadius: 4 },
+        { label: 'F1-Score', data: f1, backgroundColor: '#8D99AE', borderRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          min: 0,
+          max: 1.0,
+          title: { display: true, text: 'Score (0.0 to 1.0)' },
+          grid: { color: '#E2E8F0' }
+        }
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

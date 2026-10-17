@@ -1,0 +1,8 @@
+{
+  "name": "Remix Remix FairHire Analytics - Recruitment Bias Detection",
+  "description": "AI-Based Recruitment Bias Detection and Fairness Analysis Flask Web Application with scikit-learn models, demographic audits, and governance reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

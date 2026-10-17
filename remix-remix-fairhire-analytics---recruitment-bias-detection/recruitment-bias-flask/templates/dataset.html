@@ -1,0 +1,532 @@
+{% extends "base.html" %}
+
+{% block title %}Dataset Overview - FairHire Analytics{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="mb-4 pb-2 border-bottom">
+  <h2 class="fw-bold text-navy mb-1"><i class="bi bi-database me-2"></i> Dataset Overview & Inspection</h2>
+  <p class="text-muted mb-0 small">Comprehensive inspection of schema, column roles, missing values, and demographic distributions.</p>
+</div>
+
+<!-- 4 Top KPI Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-label">Total Rows</div>
+      <div class="stat-value">{{ "{:,}".format(total_rows) }}</div>
+      <div class="stat-note text-muted">Applicant records in CSV</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-label">Columns</div>
+      <div class="stat-value">9</div>
+      <div class="stat-note text-muted">8 original + 1 derived Age Group</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-label">Missing Values</div>
+      <div class="stat-value text-success">0</div>
+      <div class="stat-note text-muted">Complete records (0% missing)</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-label">Best Match = 1</div>
+      <div class="stat-value text-teal">{{ "%.1f"|format(overall_rate) }}%</div>
+      <div class="stat-note text-muted">Overall positive label rate</div>
+    </div>
+  </div>
+</div>
+
+<!-- What does Best Match mean? -->
+<div class="callout-box callout-info mb-4">
+  <h6 class="fw-bold text-navy mb-2"><i class="bi bi-info-circle-fill text-teal me-2"></i> What Does the 'Best Match' Label Mean?</h6>
+  <p class="mb-2 small">
+    No formal data dictionary accompanied this dataset. Rather than assuming what it represents, we analyzed the raw data directly:
+  </p>
+  <ul class="mb-2 ps-3 small">
+    <li><strong>Target variable:</strong> Binary 0/1 column ({{ "%.1f"|format(overall_rate) }}% are marked 1).</li>
+    <li><strong>Skill alignment:</strong> Every resume lists 4–7 skills from its job role's designated skill set. There are no mismatched resume/job pairs; the label does <em>not</em> indicate an unqualified applicant.</li>
+    <li><strong>Job descriptions:</strong> Exactly 51 unique descriptions exist—one for each role. Custom descriptions do not appear in the training data.</li>
+    <li><strong>Strong gender link:</strong> In 32 roles, men are labelled Best Match &ge;50 percentage points more often than women; in 17 roles women are marked &ge;50 points more often; only 2 roles are roughly neutral.</li>
+  </ul>
+  <p class="mb-0 small text-muted">
+    <strong>Conclusion:</strong> We treat <em>Best Match</em> as an empirical label. We cannot confirm that it measures actual job suitability or real-world hiring outcomes. Its distribution strongly suggests synthetic or biased labelling.
+  </p>
+</div>
+
+<!-- Columns and How They Are Used -->
+<div class="content-card mb-4">
+  <div class="content-card-header">
+    <h6 class="mb-0 fw-bold text-navy"><i class="bi bi-table me-2"></i> Columns and How They Are Used</h6>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-custom mb-0">
+      <thead>
+        <tr>
+          <th>Column</th>
+          <th>Used As</th>
+          <th>Data Type</th>
+          <th>Unique Values</th>
+          <th>Missing</th>
+          <th>Governance Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for col in columns_info %}
+        <tr>
+          <td class="fw-bold">{{ col.name }}</td>
+          <td>
+            {% if 'Excluded' in col.role %}
+              <span class="badge bg-danger">{{ col.role }}</span>
+            {% elif 'Audit Only' in col.role %}
+              <span class="badge bg-warning text-dark">{{ col.role }}</span>
+            {% elif 'Model Input' in col.role %}
+              <span class="badge bg-primary">{{ col.role }}</span>
+            {% else %}
+              <span class="badge bg-success">{{ col.role }}</span>
+            {% endif %}
+          </td>
+          <td><code>{{ col.type }}</code></td>
+          <td>{{ col.unique }}</td>
+          <td>{{ col.missing }}</td>
+          <td class="small text-muted">
+            {% if col.name == 'Job Applicant Name' %}
+              Excluded from training to preserve privacy.
+            {% elif col.name in ['Age', 'Gender', 'Race', 'Ethnicity'] %}
+              Protected attribute; used only for fairness audits.
+            {% elif col.name in ['Resume', 'Job Roles', 'Job Description'] %}
+              Legitimate input feature for candidate scoring.
+            {% else %}
+              Target label for supervised learning.
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Best Match Rate by Group (Tabbed Navigation) -->
+<div class="content-card mb-4">
+  <div class="content-card-header">
+    <h6 class="mb-0 fw-bold text-navy"><i class="bi bi-pie-chart-fill text-teal me-2"></i> Best Match Rate by Group (Full Dataset)</h6>
+  </div>
+  <div class="content-card-body pb-0">
+    <!-- Tabs Nav -->
+    <ul class="nav nav-tabs" id="groupTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active fw-semibold" id="gender-tab" data-bs-toggle="tab" data-bs-target="#tab-gender" type="button" role="tab">
+          <i class="bi bi-gender-ambiguous me-1"></i> Gender
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link fw-semibold" id="race-tab" data-bs-toggle="tab" data-bs-target="#tab-race" type="button" role="tab">
+          <i class="bi bi-people me-1"></i> Race
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link fw-semibold" id="age-tab" data-bs-toggle="tab" data-bs-target="#tab-age" type="button" role="tab">
+          <i class="bi bi-calendar-event me-1"></i> Age Group
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link fw-semibold" id="eth-tab" data-bs-toggle="tab" data-bs-target="#tab-eth" type="button" role="tab">
+          <i class="bi bi-globe me-1"></i> Ethnicity
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link fw-semibold" id="gap-tab" data-bs-toggle="tab" data-bs-target="#tab-gap" type="button" role="tab">
+          <i class="bi bi-bar-chart-steps me-1"></i> Gender &times; Job Role Gap
+        </button>
+      </li>
+    </ul>
+  </div>
+
+  <div class="tab-content content-card-body pt-3" id="groupTabsContent">
+    <!-- Tab 1: Gender -->
+    <div class="tab-pane fade show active" id="tab-gender" role="tabpanel">
+      <div class="row g-4 align-items-center">
+        <div class="col-lg-5">
+          <table class="table table-custom table-sm mb-0">
+            <thead>
+              <tr>
+                <th>Gender</th>
+                <th>Applicants (n)</th>
+                <th>Best Match Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for k, v in gender_dist.items() %}
+              <tr>
+                <td class="fw-bold">{{ k }}</td>
+                <td>{{ "{:,}".format(v['count']) }}</td>
+                <td class="fw-semibold text-teal">{{ "%.1f"|format(v['mean'] * 100) }}%</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <small class="text-muted d-block mt-2">Overall baseline rate across all applicants: {{ "%.1f"|format(overall_rate) }}%</small>
+        </div>
+        <div class="col-lg-7">
+          <div class="chart-container" style="height: 250px;">
+            <canvas id="tabGenderChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 2: Race -->
+    <div class="tab-pane fade" id="tab-race" role="tabpanel">
+      <div class="row g-4 align-items-center">
+        <div class="col-lg-5">
+          <table class="table table-custom table-sm mb-0">
+            <thead>
+              <tr>
+                <th>Race Category</th>
+                <th>Applicants (n)</th>
+                <th>Best Match Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for k, v in race_dist.items() %}
+              <tr>
+                <td class="fw-bold">{{ k }}</td>
+                <td>{{ "{:,}".format(v['count']) }}</td>
+                <td class="fw-semibold text-teal">{{ "%.1f"|format(v['mean'] * 100) }}%</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="col-lg-7">
+          <div class="chart-container" style="height: 250px;">
+            <canvas id="tabRaceChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 3: Age Group -->
+    <div class="tab-pane fade" id="tab-age" role="tabpanel">
+      <div class="row g-4 align-items-center">
+        <div class="col-lg-5">
+          <table class="table table-custom table-sm mb-0">
+            <thead>
+              <tr>
+                <th>Age Group</th>
+                <th>Applicants (n)</th>
+                <th>Best Match Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for k, v in age_dist.items() %}
+              <tr>
+                <td class="fw-bold">{{ k }}</td>
+                <td>{{ "{:,}".format(v['count']) }}</td>
+                <td class="fw-semibold text-teal">{{ "%.1f"|format(v['mean'] * 100) }}%</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="col-lg-7">
+          <div class="chart-container" style="height: 250px;">
+            <canvas id="tabAgeChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 4: Ethnicity -->
+    <div class="tab-pane fade" id="tab-eth" role="tabpanel">
+      <div class="row g-4 align-items-center">
+        <div class="col-lg-5">
+          <div style="max-height: 280px; overflow-y: auto;">
+            <table class="table table-custom table-sm mb-0">
+              <thead>
+                <tr>
+                  <th>Ethnicity Group</th>
+                  <th>Applicants (n)</th>
+                  <th>Best Match Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for k, v in eth_dist.items() %}
+                <tr>
+                  <td class="fw-bold small">{{ k }}</td>
+                  <td>{{ "{:,}".format(v['count']) }}</td>
+                  <td class="fw-semibold text-teal">{{ "%.1f"|format(v['mean'] * 100) }}%</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-lg-7">
+          <div class="chart-container" style="height: 280px;">
+            <canvas id="tabEthChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab 5: Gender x Role Gap -->
+    <div class="tab-pane fade" id="tab-gap" role="tabpanel">
+      <div class="mb-3">
+        <p class="small text-muted mb-2">
+          <strong>Best Match rate for women minus men, per job role.</strong>
+          Green bars (to the right): women labelled more often. Navy bars (to the left): men labelled more often.
+        </p>
+      </div>
+      <div class="border rounded p-2" style="max-height: 480px; overflow-y: auto;">
+        <div style="height: 1100px;">
+          <canvas id="tabRoleGapChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Paginated Sample Rows -->
+<div class="content-card mb-4">
+  <div class="content-card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div>
+      <h6 class="mb-0 fw-bold text-navy"><i class="bi bi-list-columns me-2"></i> Sample Records Preview</h6>
+      <small class="text-muted">Applicant names are hidden for privacy and are never used as model inputs.</small>
+    </div>
+    <form method="GET" action="{{ url_for('dataset_overview') }}" class="d-flex gap-2">
+      <select name="role" class="form-select form-select-sm" style="max-width: 200px;">
+        <option value="">All Job Roles</option>
+        {% for r in ALL_ROLES %}
+          <option value="{{ r }}" {% if role_filter == r %}selected{% endif %}>{{ r }}</option>
+        {% endfor %}
+      </select>
+      <select name="gender" class="form-select form-select-sm" style="max-width: 120px;">
+        <option value="">All Genders</option>
+        <option value="Male" {% if gender_filter == 'Male' %}selected{% endif %}>Male</option>
+        <option value="Female" {% if gender_filter == 'Female' %}selected{% endif %}>Female</option>
+      </select>
+      <button type="submit" class="btn btn-navy btn-sm">Filter</button>
+      {% if role_filter or gender_filter %}
+        <a href="{{ url_for('dataset_overview') }}" class="btn btn-outline-secondary btn-sm">Reset</a>
+      {% endif %}
+    </form>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-custom table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Age</th>
+          <th>Gender</th>
+          <th>Race</th>
+          <th>Ethnicity</th>
+          <th>Job Role</th>
+          <th>Resume Snippet</th>
+          <th>Target</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in sample_rows %}
+        <tr>
+          <td>{{ row.Age }}</td>
+          <td>
+            <span class="badge {% if row.Gender == 'Male' %}bg-primary{% else %}bg-info text-dark{% endif %}">
+              {{ row.Gender }}
+            </span>
+          </td>
+          <td><small>{{ row.Race }}</small></td>
+          <td><small>{{ row.Ethnicity }}</small></td>
+          <td class="fw-semibold">{{ row['Job Roles'] }}</td>
+          <td style="max-width: 320px;" class="small text-truncate" title="{{ row.Resume }}">
+            {{ row.Resume }}
+          </td>
+          <td>
+            {% if row['Best Match'] == 1 %}
+              <span class="badge bg-success">1 (Best Match)</span>
+            {% else %}
+              <span class="badge bg-secondary">0 (Not Best Match)</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination Controls -->
+  <div class="content-card-body border-top py-2 d-flex justify-content-between align-items-center">
+    <span class="small text-muted">
+      Showing records {{ (page - 1) * 15 + 1 }} to {{ [(page * 15), filtered_total]|min }} of {{ filtered_total }}
+    </span>
+    <nav>
+      <ul class="pagination pagination-sm mb-0">
+        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('dataset_overview', page=page-1, role=role_filter, gender=gender_filter) }}">Previous</a>
+        </li>
+        <li class="page-item active">
+          <span class="page-link">{{ page }} / {{ total_pages }}</span>
+        </li>
+        <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('dataset_overview', page=page+1, role=role_filter, gender=gender_filter) }}">Next</a>
+        </li>
+      </ul>
+    </nav>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const overallRate = {{ overall_rate }};
+
+  // Helper function to draw horizontal baseline
+  const baselinePlugin = {
+    id: 'baseline',
+    afterDraw(chart) {
+      const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+      if (!y) return;
+      const yVal = y.getPixelForValue(overallRate);
+      ctx.save();
+      ctx.strokeStyle = '#C8553D';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(left, yVal);
+      ctx.lineTo(right, yVal);
+      ctx.stroke();
+      ctx.restore();
+    }
+  };
+
+  // Tab 1: Gender Chart
+  new Chart(document.getElementById('tabGenderChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: {{ gender_dist.keys()|list|tojson }},
+      datasets: [{
+        label: 'Best Match Rate (%)',
+        data: [{% for k, v in gender_dist.items() %}{{ (v['mean']*100)|round(1) }},{% endfor %}],
+        backgroundColor: ['#1F3A5F', '#2A9D8F'],
+        borderRadius: 5,
+        barThickness: 50
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { min: 0, max: 100, ticks: { callback: v => v + '%' }, title: { display: true, text: 'Best Match Rate (%)' } }
+      }
+    },
+    plugins: [baselinePlugin]
+  });
+
+  // Tab 2: Race Chart
+  new Chart(document.getElementById('tabRaceChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: {{ race_dist.keys()|list|tojson }},
+      datasets: [{
+        label: 'Best Match Rate (%)',
+        data: [{% for k, v in race_dist.items() %}{{ (v['mean']*100)|round(1) }},{% endfor %}],
+        backgroundColor: '#2A9D8F',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { min: 0, max: 100, ticks: { callback: v => v + '%' }, title: { display: true, text: 'Best Match Rate (%)' } }
+      }
+    },
+    plugins: [baselinePlugin]
+  });
+
+  // Tab 3: Age Chart
+  new Chart(document.getElementById('tabAgeChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: {{ age_dist.keys()|list|tojson }},
+      datasets: [{
+        label: 'Best Match Rate (%)',
+        data: [{% for k, v in age_dist.items() %}{{ (v['mean']*100)|round(1) }},{% endfor %}],
+        backgroundColor: '#1F3A5F',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { min: 0, max: 100, ticks: { callback: v => v + '%' }, title: { display: true, text: 'Best Match Rate (%)' } }
+      }
+    },
+    plugins: [baselinePlugin]
+  });
+
+  // Tab 4: Ethnicity Chart
+  new Chart(document.getElementById('tabEthChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: {{ eth_dist.keys()|list|tojson }},
+      datasets: [{
+        label: 'Best Match Rate (%)',
+        data: [{% for k, v in eth_dist.items() %}{{ (v['mean']*100)|round(1) }},{% endfor %}],
+        backgroundColor: '#E9A23B',
+        borderRadius: 4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { min: 0, max: 100, ticks: { callback: v => v + '%' }, title: { display: true, text: 'Best Match Rate (%)' } },
+        x: { ticks: { autoSkip: false, maxRotation: 45, minRotation: 45, font: { size: 10 } } }
+      }
+    },
+    plugins: [baselinePlugin]
+  });
+
+  // Tab 5: Role Gap Chart
+  const roleGaps = {{ role_gaps|tojson }};
+  const roleLabels = roleGaps.map(d => d['Job Roles']);
+  const gapValues = roleGaps.map(d => (d.Gap * 100).toFixed(1));
+  const bgColors = gapValues.map(v => v >= 0 ? '#2A9D8F' : '#1F3A5F');
+
+  new Chart(document.getElementById('tabRoleGapChart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: roleLabels,
+      datasets: [{
+        label: 'Female Rate minus Male Rate (pts)',
+        data: gapValues,
+        backgroundColor: bgColors,
+        borderRadius: 3
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: {
+          title: { display: true, text: 'Female rate minus Male rate (percentage points)' },
+          grid: { color: '#E2E8F0' }
+        },
+        y: {
+          ticks: { font: { size: 9 } }
+        }
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

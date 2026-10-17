@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+
+{% block title %}Test a Candidate - FairHire Analytics{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
+  <div>
+    <h2 class="fw-bold text-navy mb-1"><i class="bi bi-person-bounding-box text-teal me-2"></i> Candidate Inference Pipeline</h2>
+    <p class="text-muted mb-0 small">Evaluate candidate resume text with trained models while maintaining strict fairness boundaries.</p>
+  </div>
+</div>
+
+<!-- Ethical Guardrails Notice -->
+<div class="callout-box callout-alert mb-4">
+  <div class="d-flex align-items-center gap-2 mb-1">
+    <i class="bi bi-shield-x fs-5 text-rose"></i>
+    <strong class="fs-6">Non-Deployment Disclaimer</strong>
+  </div>
+  This testing interface demonstrates pipeline mechanics on custom text inputs. The predicted output represents <em>this dataset's arbitrary target label</em> and must <strong>never</strong> be interpreted as a genuine assessment of candidate merit, qualification, or suitability.
+</div>
+
+<div class="row g-4">
+  <!-- Input Form Column -->
+  <div class="col-lg-7">
+    <div class="content-card">
+      <div class="content-card-header d-flex justify-content-between align-items-center">
+        <h6><i class="bi bi-input-cursor-text me-2"></i> Candidate Submission Form</h6>
+        <button type="button" id="btn-load-example" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-person-fill me-1"></i> Load Sample Applicant
+        </button>
+      </div>
+      <div class="content-card-body">
+        {% if errors %}
+          <div class="alert alert-danger" role="alert">
+            <h6 class="fw-bold mb-1"><i class="bi bi-exclamation-circle-fill me-1"></i> Please resolve the following errors:</h6>
+            <ul class="mb-0 ps-3 small">
+              {% for e in errors %}
+                <li>{{ e }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        {% if warnings %}
+          <div class="alert alert-warning" role="alert">
+            <h6 class="fw-bold mb-1"><i class="bi bi-exclamation-triangle-fill me-1"></i> Distribution Alerts:</h6>
+            <ul class="mb-0 ps-3 small">
+              {% for w in warnings %}
+                <li>{{ w }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('candidate_test') }}" id="candidate-form">
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label for="cand_model" class="form-label fw-semibold small text-muted">Model Architecture *</label>
+              <select name="cand_model" id="cand_model" class="form-select">
+                {% for m in MODEL_NAMES %}
+                  <option value="{{ m }}" {% if form_data.cand_model == m %}selected{% endif %}>{{ m }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label for="cand_role" class="form-label fw-semibold small text-muted">Job Role *</label>
+              <select name="cand_role" id="cand_role" class="form-select" required>
+                <option value="">— Select a Role (51 available) —</option>
+                {% for r in ALL_ROLES %}
+                  <option value="{{ r }}" {% if form_data.cand_role == r %}selected{% endif %}>{{ r }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="cand_resume" class="form-label fw-semibold small text-muted">
+              Resume Text * <small class="text-secondary">(Minimum 25 characters)</small>
+            </label>
+            <textarea name="cand_resume" id="cand_resume" class="form-control" rows="4" required
+                      placeholder="e.g. Proficient in Python, SQL, Docker, Machine Learning, with senior-level experience in the field. Holds a Masters degree. Holds certifications relevant to Software Engineer.">{{ form_data.cand_resume }}</textarea>
+          </div>
+
+          <div class="mb-3">
+            <label for="cand_skills" class="form-label fw-semibold small text-muted">
+              Additional Skills & Qualifications <small class="text-secondary">(Optional — appended to resume)</small>
+            </label>
+            <textarea name="cand_skills" id="cand_skills" class="form-control" rows="2"
+                      placeholder="e.g. Kubernetes, CI/CD, Microservices, REST APIs">{{ form_data.cand_skills }}</textarea>
+          </div>
+
+          <div class="mb-3">
+            <label for="cand_jd" class="form-label fw-semibold small text-muted">
+              Job Description * <small class="text-secondary">(Auto-populates when role is chosen)</small>
+            </label>
+            <textarea name="cand_jd" id="cand_jd" class="form-control" rows="3" required
+                      placeholder="Standard job description will populate upon selecting a job role.">{{ form_data.cand_jd }}</textarea>
+          </div>
+
+          <!-- Fairness Demonstration Accordion -->
+          <div class="border rounded p-3 bg-light mb-4">
+            <div class="form-check form-switch mb-2">
+              <input class="form-check-input" type="checkbox" role="switch" name="cand_demo_on" id="cand_demo_on"
+                     {% if form_data.cand_demo_on %}checked{% endif %}>
+              <label class="form-check-label fw-bold text-navy" for="cand_demo_on">
+                Enable Experimental Fairness Audit Simulation
+              </label>
+            </div>
+            <p class="small text-muted mb-3">
+              <i class="bi bi-shield-check text-success me-1"></i>
+              <strong>Architectural Guarantee:</strong> Demographics are <strong>strictly quarantined</strong> and never enter the primary prediction model. Enabling this executes a counterfactual audit to reveal how biased audit models react if gender is switched.
+            </p>
+
+            <div class="row g-3" id="demo-inputs">
+              <div class="col-sm-6 col-md-3">
+                <label for="cand_gender" class="form-label small text-muted">Gender</label>
+                <select name="cand_gender" id="cand_gender" class="form-select form-select-sm">
+                  {% for g in GENDERS %}
+                    <option value="{{ g }}" {% if form_data.cand_gender == g %}selected{% endif %}>{{ g }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-sm-6 col-md-3">
+                <label for="cand_age" class="form-label small text-muted">Age (25-55)</label>
+                <input type="number" name="cand_age" id="cand_age" class="form-control form-control-sm" 
+                       min="18" max="75" value="{{ form_data.cand_age }}">
+              </div>
+              <div class="col-sm-6 col-md-3">
+                <label for="cand_race" class="form-label small text-muted">Race</label>
+                <select name="cand_race" id="cand_race" class="form-select form-select-sm">
+                  {% for race in RACES %}
+                    <option value="{{ race }}" {% if form_data.cand_race == race %}selected{% endif %}>{{ race }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-sm-6 col-md-3">
+                <label for="cand_eth" class="form-label small text-muted">Ethnicity</label>
+                <select name="cand_eth" id="cand_eth" class="form-select form-select-sm">
+                  {% for eth in ETHNICITIES %}
+                    <option value="{{ eth }}" {% if form_data.cand_eth == eth %}selected{% endif %}>{{ eth }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-teal flex-grow-1">
+              <i class="bi bi-lightning-charge-fill me-1"></i> Run Model Prediction
+            </button>
+            <button type="button" id="btn-clear-form" class="btn btn-outline-secondary">
+              Clear
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Prediction Result Column -->
+  <div class="col-lg-5">
+    <div class="content-card" id="prediction-result-card">
+      <div class="content-card-header">
+        <h6><i class="bi bi-clipboard2-pulse me-2"></i> Prediction Output & Diagnostics</h6>
+      </div>
+      <div class="content-card-body">
+        {% if result %}
+          <div class="p-3 rounded mb-3 text-center {% if result.pred == 1 %}bg-teal-subtle text-teal{% else %}bg-light text-dark{% endif %} border">
+            <span class="badge {% if result.pred == 1 %}bg-success{% else %}bg-secondary{% endif %} mb-2 px-3 py-1">
+              Standard Model Decision
+            </span>
+            <h3 class="fw-bold mb-1">{{ result.label }}</h3>
+            <div class="fs-6 mt-1">Class Probability: <strong>{{ "%.1f"|format(result.probability * 100) }}%</strong></div>
+
+            <!-- Probability Gauge Bar -->
+            <div class="progress mt-3" style="height: 10px; background-color: #E2E8F0;">
+              <div class="progress-bar {% if result.pred == 1 %}bg-success{% else %}bg-secondary{% endif %}" 
+                   role="progressbar" 
+                   style="width: {{ (result.probability * 100)|round(1) }}%;"></div>
+            </div>
+            <div class="d-flex justify-content-between mt-1 text-muted" style="font-size: 0.72rem;">
+              <span>0% (Not Match)</span>
+              <span>Threshold: 50%</span>
+              <span>100% (Best Match)</span>
+            </div>
+          </div>
+
+          <!-- Model Reliability Diagnostic -->
+          <div class="stat-card stat-card-accent-amber mb-3">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="stat-label">Model Reliability Context</div>
+                <div class="stat-value text-amber">{{ "%.1f"|format(result.test_accuracy * 100) }}%</div>
+                <div class="stat-note">
+                  Test accuracy of <strong>{{ result.model }}</strong>. Near-50% accuracy provides negligible predictive validity.
+                </div>
+              </div>
+              <div class="stat-icon-wrapper stat-icon-amber" style="width: 36px; height: 36px;">
+                <i class="bi bi-info-circle"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Counterfactual Audit Simulation Results -->
+          {% if result.audit_demo %}
+            {% set demo = result.audit_demo %}
+            <div class="content-card border-danger mt-3">
+              <div class="content-card-header bg-danger-subtle text-danger py-2">
+                <span class="fw-bold small"><i class="bi bi-shield-slash me-1"></i> Counterfactual Bias Audit</span>
+              </div>
+              <div class="content-card-body p-3">
+                <p class="small text-muted mb-2">
+                  When evaluated on an audit model that includes sensitive demographic inputs, changing <em>only the gender</em> yields:
+                </p>
+                <div class="row g-2 text-center mb-2">
+                  <div class="col-6">
+                    <div class="p-2 border rounded bg-white">
+                      <small class="text-muted d-block" style="font-size: 0.75rem;">If Female</small>
+                      <strong class="fs-5 text-navy">{{ "%.1f"|format(demo.cf.Female * 100) }}%</strong>
+                      <small class="text-muted d-block" style="font-size: 0.7rem;">P(Best Match)</small>
+                    </div>
+                  </div>
+                  <div class="col-6">
+                    <div class="p-2 border rounded bg-white">
+                      <small class="text-muted d-block" style="font-size: 0.75rem;">If Male</small>
+                      <strong class="fs-5 text-navy">{{ "%.1f"|format(demo.cf.Male * 100) }}%</strong>
+                      <small class="text-muted d-block" style="font-size: 0.7rem;">P(Best Match)</small>
+                    </div>
+                  </div>
+                </div>
+                <div class="callout-box callout-alert py-2 px-3 mb-2">
+                  <small>
+                    <strong>Disparity Detected:</strong> <strong>{{ "%.1f"|format(demo.gap * 100) }} percentage points</strong> difference based solely on gender.
+                  </small>
+                </div>
+                {% if demo.cohort_size %}
+                  <small class="text-muted d-block" style="font-size: 0.75rem;">
+                    In historical data, <strong>{{ demo.cohort_size }}</strong> applicants share this job role and gender (historical rate: {{ "%.1f"|format(demo.cohort_rate * 100) }}%).
+                  </small>
+                {% endif %}
+              </div>
+            </div>
+          {% endif %}
+
+        {% else %}
+          <div class="text-center py-5 text-muted">
+            <i class="bi bi-person-gear fs-1 text-secondary mb-2 d-block"></i>
+            <h6 class="fw-bold">No Candidate Evaluated Yet</h6>
+            <p class="small mb-3">Fill out the form or click <strong>Load Sample Applicant</strong> to test pipeline inference.</p>
+          </div>
+        {% endif %}
+      </div>
+      <div class="content-card-body border-top py-2 bg-light">
+        <small class="text-muted d-block" style="font-size: 0.75rem;">
+          <i class="bi bi-shield-lock me-1"></i> Data privacy: Inputs are processed transiently in memory and are never saved to disk.
+        </small>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - FairHire Analytics{% endblock %}
+
+{% block content %}
+<!-- Executive Header -->
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-2 border-bottom">
+  <div>
+    <h2 class="fw-bold text-navy mb-1">
+      Recruitment Bias & Fairness Audit
+    </h2>
+    <p class="text-muted mb-0 small">
+      Evaluating machine learning models across 10,000 applicant records for algorithmic fairness.
+    </p>
+  </div>
+  <div class="d-flex align-items-center gap-2 mt-2 mt-md-0">
+    <span class="badge badge-soft-slate px-3 py-2">
+      <i class="bi bi-pie-chart text-teal me-1"></i> 80/20 Stratified Split
+    </span>
+    <span class="badge badge-soft-slate px-3 py-2">
+      <i class="bi bi-briefcase text-navy me-1"></i> 51 Job Roles
+    </span>
+  </div>
+</div>
+
+<!-- 4 Modern Stat Cards with Icon Medallions & Accents -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-xl-3">
+    <div class="stat-card stat-card-accent-navy">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-label">Total Applicants</div>
+          <div class="stat-value">{{ "{:,}".format(total_applicants) }}</div>
+          <div class="stat-note"><i class="bi bi-file-earmark-person"></i> Evaluated records</div>
+        </div>
+        <div class="stat-icon-wrapper stat-icon-navy">
+          <i class="bi bi-people-fill"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-xl-3">
+    <div class="stat-card stat-card-accent-teal">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-label">Historical Best Match</div>
+          <div class="stat-value text-teal">{{ "%.1f"|format(best_match_pct) }}%</div>
+          <div class="stat-note"><i class="bi bi-check-circle"></i> Target label base rate</div>
+        </div>
+        <div class="stat-icon-wrapper stat-icon-teal">
+          <i class="bi bi-award-fill"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-xl-3">
+    <div class="stat-card stat-card-accent-amber">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-label">Standard Model Accuracy</div>
+          <div class="stat-value text-amber">{{ "%.1f"|format(best_std_acc) }}%</div>
+          <div class="stat-note"><i class="bi bi-exclamation-circle"></i> Resume only (chance level)</div>
+        </div>
+        <div class="stat-icon-wrapper stat-icon-amber">
+          <i class="bi bi-cpu-fill"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-xl-3">
+    <div class="stat-card stat-card-accent-rose">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="stat-label">Audit Model Accuracy</div>
+          <div class="stat-value text-rose">{{ "%.1f"|format(best_aud_acc) }}%</div>
+          <div class="stat-note"><i class="bi bi-shield-slash"></i> With Gender added (learns bias)</div>
+        </div>
+        <div class="stat-icon-wrapper stat-icon-rose">
+          <i class="bi bi-graph-up-arrow"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Core Takeaways Box -->
+<div class="callout-box callout-warn mb-4 py-3">
+  <div class="d-flex align-items-center gap-2 mb-2">
+    <i class="bi bi-lightbulb-fill text-amber fs-5"></i>
+    <span class="fw-bold text-dark fs-6">Empirical Findings at a Glance</span>
+  </div>
+  <div class="row g-3 small">
+    <div class="col-md-4">
+      <div class="p-3 bg-white rounded border border-warning-subtle h-100">
+        <div class="fw-bold text-navy mb-1"><i class="bi bi-1-circle text-amber me-1"></i> Low Signal in Resumes</div>
+        <p class="text-muted mb-0">Standard models achieve ~50% test accuracy—effectively random guessing. Resume skills contain virtually no signal for the label.</p>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="p-3 bg-white rounded border border-warning-subtle h-100">
+        <div class="fw-bold text-navy mb-1"><i class="bi bi-2-circle text-amber me-1"></i> Role-Level Gender Skew</div>
+        <p class="text-muted mb-0">In historical labels, 32 roles favor men by &ge;50 points, 17 favor women, and only 2 roles are neutral.</p>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="p-3 bg-white rounded border border-warning-subtle h-100">
+        <div class="fw-bold text-navy mb-1"><i class="bi bi-3-circle text-amber me-1"></i> Biased Memorization Spike</div>
+        <p class="text-muted mb-0">Adding demographic features causes test accuracy to leap to ~88%, proving the model learns to mirror label bias.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Main Visuals & Action Grid -->
+<div class="row g-4 mb-4">
+  <!-- Gender Selection Disparity Chart -->
+  <div class="col-lg-6">
+    <div class="content-card h-100">
+      <div class="content-card-header">
+        <h6><i class="bi bi-bar-chart-fill text-teal me-2"></i> Historical Best Match Rate by Gender</h6>
+        <span class="badge badge-soft-slate">10,000 Records</span>
+      </div>
+      <div class="content-card-body">
+        <div class="chart-container" style="min-height: 250px; height: 250px;">
+          <canvas id="simpleGenderChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audit Modules Navigation -->
+  <div class="col-lg-6">
+    <div class="content-card h-100">
+      <div class="content-card-header">
+        <h6><i class="bi bi-grid-fill text-navy me-2"></i> Audit Modules & Shortcuts</h6>
+      </div>
+      <div class="content-card-body p-3">
+        <div class="row g-3">
+          <div class="col-6">
+            <a href="{{ url_for('dataset_overview') }}" class="text-decoration-none text-dark d-block h-100">
+              <div class="action-card">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <span class="stat-icon-wrapper stat-icon-teal" style="width: 34px; height: 34px; font-size: 1rem;">
+                    <i class="bi bi-database"></i>
+                  </span>
+                  <i class="bi bi-arrow-up-right text-muted small"></i>
+                </div>
+                <div class="fw-bold text-navy" style="font-size: 0.92rem;">Dataset Analysis</div>
+                <div class="text-muted" style="font-size: 0.75rem;">10k rows & 51 roles</div>
+              </div>
+            </a>
+          </div>
+
+          <div class="col-6">
+            <a href="{{ url_for('models_comparison') }}" class="text-decoration-none text-dark d-block h-100">
+              <div class="action-card">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <span class="stat-icon-wrapper stat-icon-navy" style="width: 34px; height: 34px; font-size: 1rem;">
+                    <i class="bi bi-cpu"></i>
+                  </span>
+                  <i class="bi bi-arrow-up-right text-muted small"></i>
+                </div>
+                <div class="fw-bold text-navy" style="font-size: 0.92rem;">ML Evaluation</div>
+                <div class="text-muted" style="font-size: 0.75rem;">Confusion matrices</div>
+              </div>
+            </a>
+          </div>
+
+          <div class="col-6">
+            <a href="{{ url_for('fairness_analysis') }}" class="text-decoration-none text-dark d-block h-100">
+              <div class="action-card">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <span class="stat-icon-wrapper stat-icon-amber" style="width: 34px; height: 34px; font-size: 1rem;">
+                    <i class="bi bi-pie-chart"></i>
+                  </span>
+                  <i class="bi bi-arrow-up-right text-muted small"></i>
+                </div>
+                <div class="fw-bold text-navy" style="font-size: 0.92rem;">Fairness Audit</div>
+                <div class="text-muted" style="font-size: 0.75rem;">0.80 Disparate Impact</div>
+              </div>
+            </a>
+          </div>
+
+          <div class="col-6">
+            <a href="{{ url_for('candidate_test') }}" class="text-decoration-none text-dark d-block h-100">
+              <div class="action-card">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <span class="stat-icon-wrapper stat-icon-teal" style="width: 34px; height: 34px; font-size: 1rem; background-color: #ECFDF5; color: #059669;">
+                    <i class="bi bi-person-check"></i>
+                  </span>
+                  <i class="bi bi-arrow-up-right text-muted small"></i>
+                </div>
+                <div class="fw-bold text-navy" style="font-size: 0.92rem;">Test Candidate</div>
+                <div class="text-muted" style="font-size: 0.75rem;">Real-time scoring</div>
+              </div>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Compact Ethics Footer Notice -->
+<div class="d-flex flex-wrap align-items-center justify-content-between p-3 bg-white border rounded text-muted small shadow-xs">
+  <div>
+    <i class="bi bi-shield-lock text-secondary me-1"></i>
+    <strong>Educational Prototype:</strong> Evaluates algorithmic bias for research. Strictly prohibited for real hiring decisions.
+  </div>
+  <a href="{{ url_for('fairness_analysis') }}" class="text-decoration-none fw-semibold text-teal mt-1 mt-md-0">
+    Explore Fairness Audit <i class="bi bi-arrow-right"></i>
+  </a>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const ctx = document.getElementById('simpleGenderChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Male Applicants', 'Female Applicants'],
+      datasets: [{
+        label: 'Best Match Rate (%)',
+        data: [
+          {{ (gender_rates.get('Male', 0)*100)|round(1) }},
+          {{ (gender_rates.get('Female', 0)*100)|round(1) }}
+        ],
+        backgroundColor: ['#0F1E36', '#0D9488'],
+        borderRadius: 8,
+        barThickness: 50
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0F1E36',
+          titleFont: { family: 'Inter', size: 12 },
+          bodyFont: { family: 'Inter', size: 12 },
+          padding: 10,
+          cornerRadius: 6,
+          callbacks: {
+            label: function(context) {
+              return ` Best Match Rate: ${context.parsed.y}%`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          min: 0,
+          max: 100,
+          ticks: {
+            callback: function(val) { return val + '%'; },
+            font: { family: 'Inter', size: 11 }
+          },
+          grid: { color: '#F1F5F9' }
+        },
+        x: {
+          grid: { display: false },
+          ticks: { font: { family: 'Inter', size: 12, weight: '600' } }
+        }
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

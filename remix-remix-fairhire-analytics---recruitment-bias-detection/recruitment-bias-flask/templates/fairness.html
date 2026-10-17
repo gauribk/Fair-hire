@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block title %}Fairness Analysis - FairHire Analytics{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+  <div>
+    <h2 class="fw-bold text-navy mb-1"><i class="bi bi-pie-chart me-2"></i> Algorithmic Fairness & Bias Audit</h2>
+    <p class="text-muted mb-0">Demographic parity, disparate impact ratios, and error-rate parity on held-out test data ({{ "{:,}".format(test_size) }} applicants).</p>
+  </div>
+  <div class="btn-group" role="group">
+    <a href="{{ url_for('fairness_analysis', setup='standard', model=selected_model, attribute=attr_label) }}" 
+       class="btn {% if setup == 'standard' %}btn-navy{% else %}btn-outline-secondary{% endif %}">
+      Standard Setup
+    </a>
+    <a href="{{ url_for('fairness_analysis', setup='audit', model=selected_model, attribute=attr_label) }}" 
+       class="btn {% if setup == 'audit' %}btn-danger text-white{% else %}btn-outline-danger{% endif %}">
+      Audit Setup
+    </a>
+  </div>
+</div>
+
+<!-- Filter Control Bar -->
+<div class="content-card mb-4">
+  <div class="content-card-body py-3">
+    <form method="GET" action="{{ url_for('fairness_analysis') }}" class="row g-3 align-items-center">
+      <input type="hidden" name="setup" value="{{ setup }}">
+      <div class="col-md-5">
+        <label class="form-label small fw-bold text-muted mb-1">Select Machine Learning Model:</label>
+        <select name="model" class="form-select" onchange="this.form.submit()">
+          {% for m in MODEL_NAMES %}
+            <option value="{{ m }}" {% if selected_model == m %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label small fw-bold text-muted mb-1">Select Demographic Group Attribute:</label>
+        <select name="attribute" class="form-select" onchange="this.form.submit()">
+          {% for k, v in GROUP_OPTIONS.items() %}
+            <option value="{{ k }}" {% if attr_label == k %}selected{% endif %}>{{ k }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-navy w-100">Apply Audit</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Fairness Metric Summary Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card stat-card-accent-navy">
+      <div class="stat-label">Historical Rate Gap</div>
+      <div class="stat-value">{{ "%.1f"|format(summary['Actual-rate gap (max-min)'] * 100) }}%</div>
+      <div class="stat-note"><i class="bi bi-clock-history"></i> Max &minus; min rate in dataset</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card stat-card-accent-amber">
+      <div class="stat-label">Predicted Rate Gap</div>
+      <div class="stat-value text-amber">{{ "%.1f"|format(summary['Selection-rate gap (max-min)'] * 100) }}%</div>
+      <div class="stat-note"><i class="bi bi-distribute-horizontal"></i> Demographic Parity Diff</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card {% if summary['Disparate-impact ratio (min/max)'] < 0.80 %}stat-card-accent-rose{% else %}stat-card-accent-teal{% endif %}">
+      <div class="stat-label">Disparate Impact Ratio</div>
+      <div class="stat-value {% if summary['Disparate-impact ratio (min/max)'] < 0.80 %}text-rose{% else %}text-teal{% endif %}">
+        {{ "%.2f"|format(summary['Disparate-impact ratio (min/max)']) }}
+      </div>
+      <div class="stat-note">
+        {% if summary['Disparate-impact ratio (min/max)'] < 0.80 %}
+          <i class="bi bi-x-circle-fill text-danger me-1"></i> Violates 80% four-fifths rule
+        {% else %}
+          <i class="bi bi-check-circle-fill text-success me-1"></i> Meets 80% rule threshold
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card stat-card-accent-teal">
+      <div class="stat-label">TPR Gap (Equal Opportunity)</div>
+      <div class="stat-value text-teal">{{ "%.1f"|format(summary['True-positive-rate gap (max-min)'] * 100) }}%</div>
+      <div class="stat-note"><i class="bi bi-check-all"></i> True positive disparity</div>
+    </div>
+  </div>
+</div>
+
+<!-- Detailed Group Audit Table & Chart -->
+<div class="row g-4 mb-4">
+  <div class="col-lg-7">
+    <div class="content-card h-100">
+      <div class="content-card-header d-flex justify-content-between align-items-center">
+        <h5><i class="bi bi-table me-2"></i> Per-Group Fairness Audit Table</h5>
+        <span class="badge bg-light text-dark border">{{ attr_label }} &bull; {{ selected_model }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-custom">
+          <thead>
+            <tr>
+              <th>{{ attr_label }} Group</th>
+              <th>Applicants (n)</th>
+              <th>Actual Best Match</th>
+              <th>Predicted Rate</th>
+              <th>Accuracy</th>
+              <th>TPR</th>
+              <th>FPR</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in table_records %}
+            <tr>
+              <td class="fw-bold">
+                {{ r[group_col] }}
+                {% if r['Small group?'] == 'yes' %}
+                  <span class="badge bg-warning text-dark ms-1" title="Sample size under 30: results may be statistically noisy">n&lt;30</span>
+                {% endif %}
+              </td>
+              <td>{{ r['Applicants (n)'] }}</td>
+              <td>{{ "%.1f"|format(r['Actual Best Match rate'] * 100) }}%</td>
+              <td class="fw-semibold text-primary">{{ "%.1f"|format(r['Predicted Best Match rate'] * 100) }}%</td>
+              <td>{{ "%.1f"|format(r['Accuracy'] * 100) }}%</td>
+              <td>
+                {% if r['True positive rate'] != None %}
+                  {{ "%.1f"|format(r['True positive rate'] * 100) }}%
+                {% else %}
+                  <span class="text-muted">N/A</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if r['False positive rate'] != None %}
+                  {{ "%.1f"|format(r['False positive rate'] * 100) }}%
+                {% else %}
+                  <span class="text-muted">N/A</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="content-card-body border-top py-2">
+        <small class="text-muted">
+          * TPR = True Positive Rate (Sensitivity); FPR = False Positive Rate. Groups with n&lt;30 have wide confidence intervals.
+        </small>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="content-card h-100">
+      <div class="content-card-header">
+        <h5><i class="bi bi-bar-chart me-2"></i> Actual vs. Predicted Selection Rate</h5>
+      </div>
+      <div class="content-card-body">
+        <div class="chart-container">
+          <canvas id="fairnessBarChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Plain English Regulatory Interpretation -->
+<div class="callout-box callout-warn mb-4">
+  <h6 class="fw-bold text-dark mb-2"><i class="bi bi-chat-left-quote-fill me-2"></i> Plain-English Audit Synthesis & Interpretation</h6>
+  <ul class="mb-0 ps-3">
+    {% if model_acc < 0.58 %}
+      <li class="mb-1">
+        <strong>Low Predictive Validity Alert:</strong> This model achieves only <strong>{{ "%.1f"|format(model_acc * 100) }}%</strong> overall test accuracy, which is approximately random chance. 
+        Similar selection rates across groups do <strong>not</strong> prove fairness; they simply reflect a model that fails to extract valid signal from the features.
+      </li>
+    {% endif %}
+    <li class="mb-1">
+      <strong>Historical Disparity:</strong> In historical data, the selection rate gap between the highest and lowest {{ attr_label.lower() }} groups is 
+      <strong>{{ "%.1f"|format(summary['Actual-rate gap (max-min)'] * 100) }} percentage points</strong>.
+    </li>
+    <li class="mb-1">
+      <strong>Model Parity Difference:</strong> The model's predicted selection rate differs across groups by 
+      <strong>{{ "%.1f"|format(summary['Selection-rate gap (max-min)'] * 100) }} percentage points</strong>.
+    </li>
+    <li class="mb-1">
+      <strong>Four-Fifths Rule (EEOC Disparate Impact):</strong> The disparate-impact ratio is 
+      <strong>{{ "%.2f"|format(summary['Disparate-impact ratio (min/max)']) }}</strong>. 
+      {% if summary['Disparate-impact ratio (min/max)'] < 0.80 %}
+        This is below the standard 0.80 regulatory benchmark, indicating adverse impact.
+      {% else %}
+        This ratio is above 0.80. Passing this single metric does not confirm the absence of bias.
+      {% endif %}
+    </li>
+    <li>
+      <strong>Equal Opportunity:</strong> The True Positive Rate gap is 
+      <strong>{{ "%.1f"|format(summary['True-positive-rate gap (max-min)'] * 100) }} percentage points</strong>, 
+      measuring the difference in recall between protected classes.
+    </li>
+  </ul>
+</div>
+
+<!-- Cross-Model Fairness Benchmark -->
+<div class="content-card">
+  <div class="content-card-header">
+    <h5><i class="bi bi-clipboard2-check me-2"></i> Cross-Model Fairness Benchmark for {{ attr_label }}</h5>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-custom">
+      <thead>
+        <tr>
+          <th>Model Algorithm</th>
+          <th>Test Accuracy</th>
+          <th>Selection Rate Gap</th>
+          <th>Disparate Impact Ratio</th>
+          <th>TPR Gap</th>
+          <th>Compliance Status (0.80 Rule)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in model_comp %}
+        <tr>
+          <td class="fw-bold">{{ m.model }}</td>
+          <td><span class="badge bg-secondary">{{ "%.1f"|format(m.accuracy * 100) }}%</span></td>
+          <td>{{ "%.1f"|format(m.pred_rate_gap * 100) }}%</td>
+          <td class="fw-semibold">{{ "%.2f"|format(m.di_ratio) }}</td>
+          <td>{{ "%.1f"|format(m.tpr_gap * 100) }}%</td>
+          <td>
+            {% if m.di_ratio >= 0.80 %}
+              <span class="badge bg-success-subtle text-success"><i class="bi bi-check-circle"></i> Passes (Ratio &ge; 0.80)</span>
+            {% else %}
+              <span class="badge bg-danger-subtle text-danger"><i class="bi bi-x-circle"></i> Adverse Impact (&lt; 0.80)</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const ctx = document.getElementById('fairnessBarChart').getContext('2d');
+  const records = {{ table_records|tojson }};
+  const labels = records.map(r => r[{{ group_col|tojson }}]);
+  const actualRates = records.map(r => (r['Actual Best Match rate'] * 100).toFixed(1));
+  const predRates = records.map(r => (r['Predicted Best Match rate'] * 100).toFixed(1));
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Actual (Dataset Label)',
+          data: actualRates,
+          backgroundColor: '#8D99AE',
+          borderRadius: 4
+        },
+        {
+          label: 'Predicted (Model Output)',
+          data: predRates,
+          backgroundColor: '#2A9D8F',
+          borderRadius: 4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          min: 0,
+          max: 100,
+          title: { display: true, text: 'Selection Rate (%)' },
+          grid: { color: '#E2E8F0' }
+        }
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

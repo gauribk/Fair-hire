@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}Feature Importance - FairHire Analytics{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-2 border-bottom gap-2">
+  <div>
+    <h2 class="fw-bold text-navy mb-1"><i class="bi bi-bar-chart-steps text-teal me-2"></i> Feature Importance & Interpretability</h2>
+    <p class="text-muted mb-0 small">Measuring model reliance by permuting input feature blocks on held-out test data.</p>
+  </div>
+  <div class="btn-group" role="group">
+    <a href="{{ url_for('feature_importance', setup='standard', model=selected_model) }}" 
+       class="btn btn-sm {% if setup == 'standard' %}btn-navy{% else %}btn-outline-secondary{% endif %}">
+      <i class="bi bi-shield-check me-1"></i> Standard Setup
+    </a>
+    <a href="{{ url_for('feature_importance', setup='audit', model=selected_model) }}" 
+       class="btn btn-sm {% if setup == 'audit' %}btn-danger text-white{% else %}btn-outline-danger{% endif %}">
+      <i class="bi bi-shield-slash me-1"></i> Audit Setup
+    </a>
+  </div>
+</div>
+
+<!-- Model Selector -->
+<div class="content-card mb-4">
+  <div class="content-card-body py-3">
+    <form method="GET" action="{{ url_for('feature_importance') }}" class="row g-3 align-items-center">
+      <input type="hidden" name="setup" value="{{ setup }}">
+      <div class="col-md-6">
+        <label class="form-label small fw-bold text-muted mb-1">Active Model Architecture:</label>
+        <select name="model" class="form-select" onchange="this.form.submit()">
+          {% for m in MODEL_NAMES %}
+            <option value="{{ m }}" {% if selected_model == m %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6 d-flex align-items-end">
+        <span class="small text-muted">
+          Active: <strong>{{ selected_model }}</strong> &bull; Configuration: <strong class="{% if setup == 'audit' %}text-danger{% else %}text-teal{% endif %}">{{ setup|capitalize }} Setup</strong>
+        </span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Permutation Importance Section -->
+<div class="row g-4 mb-4">
+  <div class="col-lg-7">
+    <div class="content-card h-100">
+      <div class="content-card-header">
+        <h6><i class="bi bi-shuffle text-teal me-2"></i> Permutation Importance (Accuracy Drop when Shuffled)</h6>
+      </div>
+      <div class="content-card-body">
+        <p class="small text-muted mb-3">
+          Each logical feature block is shuffled across held-out test records while holding other features constant. 
+          The resulting drop in test accuracy isolates how heavily the model depends on that feature. 
+          <em>Job Role and Job Description are permuted together</em> to prevent unaligned pairs.
+        </p>
+        <div class="chart-container" style="min-height: 270px; height: 270px;">
+          <canvas id="permChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="content-card h-100">
+      <div class="content-card-header">
+        <h6><i class="bi bi-table text-navy me-2"></i> Feature Group Impact Breakdown</h6>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-custom mb-0">
+          <thead>
+            <tr>
+              <th>Feature Group</th>
+              <th>Accuracy Drop</th>
+              <th>Impact Assessment</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in perm_imp %}
+            <tr>
+              <td class="fw-bold">
+                {% if item.Input == 'Gender' %}
+                  <span class="text-danger"><i class="bi bi-exclamation-triangle-fill me-1"></i> {{ item.Input }}</span>
+                {% else %}
+                  {{ item.Input }}
+                {% endif %}
+              </td>
+              <td class="fw-semibold">{{ "%.2f"|format(item['Accuracy drop when shuffled'] * 100) }}%</td>
+              <td>
+                {% if item['Accuracy drop when shuffled'] >= 0.10 %}
+                  <span class="badge bg-danger">Critical Driver</span>
+                {% elif item['Accuracy drop when shuffled'] >= 0.02 %}
+                  <span class="badge bg-warning text-dark">Moderate</span>
+                {% else %}
+                  <span class="badge bg-light text-muted border">Near-Zero Signal</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="content-card-body border-top py-3">
+        {% if setup == 'standard' %}
+          <div class="callout-box callout-info py-2 px-3 mb-0">
+            <small>
+              <strong>Standard Insight:</strong> Drops for resume text and job description are approximately zero. The model extracts virtually no predictive signal from legitimate applicant qualifications.
+            </small>
+          </div>
+        {% else %}
+          <div class="callout-box callout-alert py-2 px-3 mb-0">
+            <small>
+              <strong>Audit Insight:</strong> Shuffling <strong>Gender</strong> causes a catastrophic drop in model accuracy. The model depends almost entirely on sensitive demographic attributes.
+            </small>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Methodological Interpretability Guidelines -->
+<div class="callout-box callout-warn mb-4">
+  <h6 class="fw-bold text-dark mb-2"><i class="bi bi-shield-check text-amber me-2"></i> Scientific Interpretability Principles</h6>
+  <div class="row g-3 small">
+    <div class="col-md-4">
+      <div class="p-3 bg-white rounded border border-warning-subtle h-100">
+        <div class="fw-bold text-navy mb-1"><i class="bi bi-1-circle text-amber me-1"></i> Feature Grouping</div>
+        <p class="text-muted mb-0">Evaluating high-level feature groups (Resume, Role, Demographics) avoids spurious TF-IDF token noise and provides robust assessment of model behavior.</p>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="p-3 bg-white rounded border border-warning-subtle h-100">
+        <div class="fw-bold text-navy mb-1"><i class="bi bi-2-circle text-amber me-1"></i> Joint Permutation</div>
+        <p class="text-muted mb-0">Because each job description is fixed per role, Job Role and Job Description are permuted jointly to prevent unrealistic synthetic inputs.</p>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="p-3 bg-white rounded border border-warning-subtle h-100">
+        <div class="fw-bold text-navy mb-1"><i class="bi bi-3-circle text-amber me-1"></i> Name Exclusion</div>
+        <p class="text-muted mb-0">Applicant names were completely omitted prior to feature encoding to guarantee models cannot memorize individual candidate identities.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const ctx = document.getElementById('permChart').getContext('2d');
+  const permData = {{ perm_imp|tojson }};
+  const labels = permData.map(d => d.Input);
+  const values = permData.map(d => (d['Accuracy drop when shuffled'] * 100).toFixed(2));
+  const bgColors = labels.map(l => l === 'Gender' ? '#E11D48' : '#0D9488');
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Accuracy Drop (Percentage Points)',
+        data: values,
+        backgroundColor: bgColors,
+        borderRadius: 6,
+        barThickness: 28
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0F1E36',
+          titleFont: { family: 'Inter', size: 12 },
+          bodyFont: { family: 'Inter', size: 12 },
+          padding: 10,
+          cornerRadius: 6,
+          callbacks: {
+            label: function(context) {
+              return ` Accuracy Drop: ${context.parsed.x} percentage points`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Accuracy Drop when Shuffled (points)', font: { family: 'Inter', size: 11 } },
+          grid: { color: '#F1F5F9' },
+          ticks: { font: { family: 'Inter', size: 11 } }
+        },
+        y: {
+          grid: { display: false },
+          ticks: { font: { family: 'Inter', size: 12, weight: '600' } }
+        }
+      }
+    }
+  });
+});
+</script>
+{% endblock %}
