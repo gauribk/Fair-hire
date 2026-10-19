@@ -459,14 +459,23 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     return response
 
-
 @app.route("/api/status")
 def api_status():
-    """Health and model initialization status check."""
     global MODEL_CACHE
-    if MODEL_CACHE is None:
-        return jsonify({"ready": False, "status": "initializing", "message": "Training ML pipelines on 10,000 applicant records..."})
-    return jsonify({"ready": True, "status": "ready", "total_records": len(MODEL_CACHE["df"])})
+
+    try:
+        get_trained_models()
+        return jsonify({
+            "ready": True,
+            "status": "ready",
+            "total_records": len(MODEL_CACHE["df"])
+        })
+    except Exception as e:
+        return jsonify({
+            "ready": False,
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 
 @app.route("/api/metadata")
