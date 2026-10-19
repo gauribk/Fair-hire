@@ -154,7 +154,7 @@ def fairness_summary(tbl: pd.DataFrame) -> dict:
     }
 
 
-def grouped_permutation_importance(pipe, test_df, use_protected, n_repeats=2, seed=RANDOM_STATE):
+def grouped_permutation_importance(pipe, test_df, use_protected, n_repeats=1, seed=RANDOM_STATE):
     """Compute permutation importance by shuffling logical feature groups."""
     rng = np.random.RandomState(seed)
     cols = feature_columns(use_protected)
