@@ -51,32 +51,37 @@ def get_trained_models():
     return MODEL_CACHE
 
 
+
 @app.context_processor
 def inject_globals():
     """Make common constants and role choices available in all Jinja templates."""
-    try:
-        models = get_trained_models()
-        df = models["df"]
+    if MODEL_CACHE is not None:
+        df = MODEL_CACHE["df"]
         roles = ALL_ROLES
         races = sorted(df["Race"].unique().tolist())
         ethnicities = sorted(df["Ethnicity"].unique().tolist())
         genders = sorted(df["Gender"].unique().tolist())
-    except Exception:
+    else:
         roles = []
         races = []
         ethnicities = []
         genders = []
+
     return {
         "APP_NAME": "FairHire Analytics",
         "APP_TITLE": "AI-Based Recruitment Bias Detection and Fairness Analysis",
         "MODEL_NAMES": mc.MODEL_NAMES,
-        "GROUP_OPTIONS": {"Gender": "Gender", "Race": "Race", "Ethnicity": "Ethnicity", "Age group": "Age Group"},
+        "GROUP_OPTIONS": {
+            "Gender": "Gender",
+            "Race": "Race",
+            "Ethnicity": "Ethnicity",
+            "Age group": "Age Group",
+        },
         "ALL_ROLES": roles,
         "RACES": races,
         "ETHNICITIES": ethnicities,
         "GENDERS": genders,
     }
-
 
 # ------------------------------------------------------------------ ROUTES
 
